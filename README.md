@@ -100,14 +100,23 @@ To run the pipeline against a seed domain, execute:
 node index.js <seed-domain> [options]
 ```
 
+### CLI Options:
+* `-l, --limit <number>`: Number of lookalike companies to source (default: `3`).
+* `-s, --safety`: Enables the interactive Safety Checkpoint table and Y/N confirmation prompt. **If omitted, the pipeline sends emails immediately.**
+* `-d, --demo`: Demo Mode. Overrides the resolved email targets from Stages 1–3 and targets **`project.samarops@gmail.com`** and **`samar@casmed.in`** only, allowing safe, end-to-end sandbox testing.
+
 ### Examples:
-* **Default execution (finds 3 lookalikes):**
+* **Demo Sandbox (targets test inboxes with safety checkpoint):**
+  ```bash
+  node index.js stripe.com --demo --safety
+  ```
+* **Full Automated Blast (direct execution without checkpoint):**
   ```bash
   node index.js stripe.com
   ```
-* **Custom limit (finds 5 lookalikes):**
+* **Interactive Sourcing Run (source 5 lookalikes with Y/N safeguard):**
   ```bash
-  node index.js stripe.com -l 5
+  node index.js stripe.com -l 5 --safety
   ```
 
 ---
@@ -115,7 +124,7 @@ node index.js <seed-domain> [options]
 ## 🛡️ Resilience & SDE Design Best Practices
 
 To ensure the CLI is robust enough to run in a production setting:
-1. **Loop Rate-Limiting:** Incorporates subtle delays (`500ms`) inside processing loops to respect third-party API rate limits and avoid `429 Too Many Requests` responses.
+1. **Loop Rate-Limiting:** Incorporates strict delays of **`2000ms` (2 seconds)** inside processing loops to respect third-party API rate limits and avoid `429 Too Many Requests` responses.
 2. **Graceful Failures:** Each API call is wrapped in a `try/catch` block. If Prospeo or Eazyreach fails to resolve a contact for *one* lookalike company, the script logs a warning, skips that company, and moves to the next without crashing.
 3. **Resilient Fallbacks:** If Apollo lookalike company search returns 0 results (due to narrow keywords), the lookalike client falls back to an industry-representative seed list to ensure the downstream pipeline can still execute.
 4. **Data Sanitization:** Trims and sanitizes domain inputs (removes `https://`, `www.`, etc.) to prevent API matching failures.
@@ -131,3 +140,8 @@ This repository reflects professional software engineering practices, utilizing 
 * `feature/stage3-eazyreach` - Email resolver fallback.
 * `feature/stage4-brevo` - Brevo outbound SMTP setup.
 * `feature/cli-orchestrator` - Index script wiring and checkpoint.
+* `hotfix/api-corrections` - Corrected Apollo query headers and Prospeo results mapping.
+* `optimize/credit-management` - Implemented the credit-preservation safety filter.
+* `hotfix/enrich-parsing` - Fixed email resolution key path mapping and status checks.
+* `optimize/rate-limiting-delays` - Switched to 2-second loops to avoid Prospeo 429 limits.
+* `feature/cli-flags` - Added `--safety` and `--demo` CLI arguments.
