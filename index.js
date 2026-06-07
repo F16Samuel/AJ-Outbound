@@ -16,15 +16,28 @@ const program = new Command();
 program
   .name('outreach-pipeline')
   .description('Automated 4-stage outbound sales outreach pipeline CLI.')
-  .argument('<seed-domain>', 'Seed company domain to find lookalikes for (e.g. stripe.com)')
+  .argument('[seed-domain]', 'Seed company domain to find lookalikes for (e.g. stripe.com)')
   .option('-l, --limit <number>', 'Number of lookalike companies to source', '3')
   .option('-s, --safety', 'Enable safety checkpoint interactive Y/N prompt before sending')
   .option('-d, --demo', 'Demo mode: targets project.samarops@gmail.com and samar@casmed.in only')
+  .option('-t, --stage <type>', 'Execution stage: exec (full run) or mail (only mock/outreach mail)', 'exec')
   .action(runPipeline);
 
 async function runPipeline(seedDomain, options) {
   logger.header('AUTOMATED OUTREACH PIPELINE');
   
+  const stage = options.stage || 'exec';
+  if (stage !== 'exec' && stage !== 'mail') {
+    logger.error(`Invalid stage: ${stage}. Please specify either 'exec' or 'mail'.`);
+    process.exit(1);
+  }
+
+  if (stage === 'exec' && !seedDomain) {
+    logger.error('Error: seed-domain argument is required when running in "exec" stage.');
+    logger.info('Usage: node index.js <seed-domain> [options]');
+    process.exit(1);
+  }
+
   const limit = parseInt(options.limit, 10);
   if (isNaN(limit) || limit <= 0) {
     logger.error('Invalid limit. Please specify a positive number.');
@@ -32,7 +45,10 @@ async function runPipeline(seedDomain, options) {
   }
 
   // Validate environment variables
-  const requiredKeys = ['APOLLO_API_KEY', 'PROSPEO_API_KEY', 'BREVO_API_KEY', 'SENDER_EMAIL'];
+  const requiredKeys = stage === 'mail'
+    ? ['BREVO_API_KEY', 'SENDER_EMAIL']
+    : ['APOLLO_API_KEY', 'PROSPEO_API_KEY', 'BREVO_API_KEY', 'SENDER_EMAIL'];
+    
   const missingKeys = requiredKeys.filter(key => !process.env[key]);
   if (missingKeys.length > 0) {
     logger.error(`Missing required environment variables: ${missingKeys.join(', ')}`);
@@ -40,97 +56,131 @@ async function runPipeline(seedDomain, options) {
     process.exit(1);
   }
 
-  logger.info(`Starting pipeline with seed domain: ${pc.bold(seedDomain)} (limit: ${limit} companies)`);
+  if (stage === 'exec') {
+    logger.info(`Starting pipeline with seed domain: ${pc.bold(seedDomain)} (limit: ${limit} companies)`);
+  } else {
+    logger.info('Starting pipeline in mail-only stage...');
+  }
   logger.divider();
 
   try {
-    // ==========================================
-    // STAGE 1: Lookalike Sourcing
-    // ==========================================
-    logger.step('1', `Sourcing lookalike companies similar to ${seedDomain}...`);
-    let lookalikeDomains = [];
-    try {
-      lookalikeDomains = await getLookalikes(seedDomain, limit);
-    } catch (err) {
-      if (!options.demo) throw err;
-      logger.warn(`Stage 1 Sourcing failed: ${err.message}. Continuing due to Demo Mode.`);
-    }
-    
-    if ((!lookalikeDomains || lookalikeDomains.length === 0) && !options.demo) {
-      logger.warn('No lookalike companies found. Halted pipeline.');
-      process.exit(0);
-    }
-    logger.divider();
+    let targetContacts = [];
 
-    // ==========================================
-    // STAGE 2: Decision Maker Identification
-    // ==========================================
-    logger.step('2', `Searching for C-level/VP decision makers in lookalike domains...`);
-    const rawDecisionMakers = [];
-    
-    for (const domain of lookalikeDomains) {
-      try {
-        const companyDMs = await getDecisionMakers(domain);
-        rawDecisionMakers.push(...companyDMs);
-      } catch (err) {
-        logger.warn(`Stage 2 Search failed for domain ${domain}: ${err.message}.`);
+    if (stage === 'mail') {
+      if (options.demo) {
+        logger.info(pc.yellow('Demo Mode active: Overriding target list with test emails (skipping Stages 1 to 3).'));
+        targetContacts = [
+          {
+            firstName: 'Samar',
+            lastName: 'Ops',
+            jobTitle: 'Head of Operations',
+            companyName: 'SamarOps',
+            domain: 'samarops.com',
+            email: 'project.samarops@gmail.com'
+          },
+          {
+            firstName: 'Samar',
+            lastName: 'Casmed',
+            jobTitle: 'Founder',
+            companyName: 'Casmed',
+            domain: 'casmed.in',
+            email: 'samar@casmed.in'
+          }
+        ];
+      } else {
+        logger.error('Error: Running stage "mail" without --demo is not supported (no target list is sourced).');
+        logger.info('Please run with both --stage mail and --demo flags to execute the outreach mail mock.');
+        process.exit(1);
       }
-      // Subtle pause to respect API rate limits (Prospeo allows 1 request/sec)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
-
-    if (rawDecisionMakers.length === 0 && !options.demo) {
-      logger.warn('No decision makers found with LinkedIn profiles. Halted pipeline.');
-      process.exit(0);
-    }
-    logger.divider();
-
-    // ==========================================
-    // STAGE 3: Email Resolution
-    // ==========================================
-    logger.step('3', `Resolving verified business email addresses from LinkedIn profiles...`);
-    const verifiedContacts = [];
-
-    for (const dm of rawDecisionMakers) {
+    } else {
+      // ==========================================
+      // STAGE 1: Lookalike Sourcing
+      // ==========================================
+      logger.step('1', `Sourcing lookalike companies similar to ${seedDomain}...`);
+      let lookalikeDomains = [];
       try {
-        const email = await resolveEmail(dm.linkedinUrl);
-        if (email) {
-          verifiedContacts.push({
-            ...dm,
-            email
-          });
-        }
+        lookalikeDomains = await getLookalikes(seedDomain, limit);
       } catch (err) {
-        logger.warn(`Stage 3 Resolution failed for ${dm.firstName}: ${err.message}.`);
+        if (!options.demo) throw err;
+        logger.warn(`Stage 1 Sourcing failed: ${err.message}. Continuing due to Demo Mode.`);
       }
-      // Pause to avoid hitting Prospeo rate limits (Prospeo allows 1 request/sec)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
+      
+      if ((!lookalikeDomains || lookalikeDomains.length === 0) && !options.demo) {
+        logger.warn('No lookalike companies found. Halted pipeline.');
+        process.exit(0);
+      }
+      logger.divider();
 
-    logger.divider();
-
-    // Override targets if demo mode is enabled
-    let targetContacts = verifiedContacts;
-    if (options.demo) {
-      logger.info(pc.yellow('Demo Mode active: Overriding target list with test emails.'));
-      targetContacts = [
-        {
-          firstName: 'Samar',
-          lastName: 'Ops',
-          jobTitle: 'Head of Operations',
-          companyName: 'SamarOps',
-          domain: 'samarops.com',
-          email: 'project.samarops@gmail.com'
-        },
-        {
-          firstName: 'Samar',
-          lastName: 'Casmed',
-          jobTitle: 'Founder',
-          companyName: 'Casmed',
-          domain: 'casmed.in',
-          email: 'samar@casmed.in'
+      // ==========================================
+      // STAGE 2: Decision Maker Identification
+      // ==========================================
+      logger.step('2', `Searching for C-level/VP decision makers in lookalike domains...`);
+      const rawDecisionMakers = [];
+      
+      for (const domain of lookalikeDomains) {
+        try {
+          const companyDMs = await getDecisionMakers(domain);
+          rawDecisionMakers.push(...companyDMs);
+        } catch (err) {
+          logger.warn(`Stage 2 Search failed for domain ${domain}: ${err.message}.`);
         }
-      ];
+        // Subtle pause to respect API rate limits (Prospeo allows 1 request/sec)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      if (rawDecisionMakers.length === 0 && !options.demo) {
+        logger.warn('No decision makers found with LinkedIn profiles. Halted pipeline.');
+        process.exit(0);
+      }
+      logger.divider();
+
+      // ==========================================
+      // STAGE 3: Email Resolution
+      // ==========================================
+      logger.step('3', `Resolving verified business email addresses from LinkedIn profiles...`);
+      const verifiedContacts = [];
+
+      for (const dm of rawDecisionMakers) {
+        try {
+          const email = await resolveEmail(dm.linkedinUrl);
+          if (email) {
+            verifiedContacts.push({
+              ...dm,
+              email
+            });
+          }
+        } catch (err) {
+          logger.warn(`Stage 3 Resolution failed for ${dm.firstName}: ${err.message}.`);
+        }
+        // Pause to avoid hitting Prospeo rate limits (Prospeo allows 1 request/sec)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      logger.divider();
+
+      // Override targets if demo mode is enabled
+      targetContacts = verifiedContacts;
+      if (options.demo) {
+        logger.info(pc.yellow('Demo Mode active: Overriding target list with test emails.'));
+        targetContacts = [
+          {
+            firstName: 'Samar',
+            lastName: 'Ops',
+            jobTitle: 'Head of Operations',
+            companyName: 'SamarOps',
+            domain: 'samarops.com',
+            email: 'project.samarops@gmail.com'
+          },
+          {
+            firstName: 'Samar',
+            lastName: 'Casmed',
+            jobTitle: 'Founder',
+            companyName: 'Casmed',
+            domain: 'casmed.in',
+            email: 'samar@casmed.in'
+          }
+        ];
+      }
     }
 
     if (targetContacts.length === 0) {
