@@ -25,7 +25,9 @@ async function getDecisionMakers(domain) {
   try {
     const response = await axios.post('https://api.prospeo.io/search-person', {
       filters: {
-        person_search: cleanDomain,
+        person_search: {
+          include: [cleanDomain]
+        },
         person_seniority: {
           include: ['C-Suite', 'Vice President', 'Director']
         }
