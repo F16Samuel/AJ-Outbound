@@ -24,51 +24,54 @@ async function getLookalikes(seedDomain, limit = 5) {
 
   logger.info(`Attempting to enrich seed domain: ${cleanSeedDomain}`);
 
-  let keywords = [];
+  let industries = [];
+  let keyword = null;
+
   try {
-    // 1. Enrich the seed domain to extract its keywords/industries
-    const enrichResponse = await axios.post('https://api.apollo.io/v1/organizations/enrich', {
-      api_key: apiKey,
-      domain: cleanSeedDomain
-    }, {
+    // 1. Enrich the seed domain to extract its keywords/industries (GET request)
+    const enrichResponse = await axios.get(`https://api.apollo.io/api/v1/organizations/enrich?domain=${cleanSeedDomain}`, {
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-cache',
+        'X-Api-Key': apiKey
       }
     });
 
     const org = enrichResponse.data.organization;
     if (org) {
-      keywords = org.keyword_tags || [];
-      if (org.industry) {
-        keywords.push(org.industry);
+      industries = org.industries || [];
+      if (org.industry && !industries.includes(org.industry)) {
+        industries.push(org.industry);
       }
-      logger.success(`Successfully enriched ${cleanSeedDomain}. Found keywords: ${keywords.slice(0, 5).join(', ')}`);
+      if (org.keyword_tags && org.keyword_tags.length > 0) {
+        keyword = org.keyword_tags[0];
+      }
+      logger.success(`Successfully enriched ${cleanSeedDomain}. Found industries: ${industries.slice(0, 3).join(', ')} | keyword: ${keyword || 'N/A'}`);
     } else {
-      logger.warn(`Could not find enrichment data for ${cleanSeedDomain}. Falling back to default keywords.`);
+      logger.warn(`Could not find enrichment data for ${cleanSeedDomain}. Falling back to default filters.`);
     }
   } catch (error) {
-    logger.warn(`Failed to enrich ${cleanSeedDomain}: ${error.message}. Falling back to default keywords.`);
+    logger.warn(`Failed to enrich ${cleanSeedDomain}: ${error.message}. Falling back to default filters.`);
   }
 
-  // Fallback keywords if enrichment failed or returned nothing
-  if (keywords.length === 0) {
-    keywords = ['saas', 'software', 'technology', 'enterprise'];
+  // Fallback if enrichment failed or returned nothing
+  if (industries.length === 0) {
+    industries = ['Software', 'Information Technology & Services', 'Internet'];
   }
 
-  // Use the top 3 keywords to search for similar companies
-  const searchKeywords = keywords.slice(0, 3);
-  logger.info(`Searching for lookalike companies matching keywords: ${searchKeywords.join(', ')}`);
+  logger.info(`Searching for lookalike companies in industries: ${industries.slice(0, 3).join(', ')}...`);
 
   try {
-    // 2. Search for organizations matching the keywords
-    const searchResponse = await axios.post('https://api.apollo.io/v1/organizations/search', {
-      api_key: apiKey,
-      keywords: searchKeywords,
+    // 2. Search for organizations matching the industries and keyword
+    const searchResponse = await axios.post('https://api.apollo.io/api/v1/organizations/search', {
+      organization_industries: industries.length > 0 ? industries : undefined,
+      q_organization_keyword: keyword || undefined,
+      page: 1,
       per_page: limit * 2 // Fetch more than limit to filter out seed domain and duplicates
     }, {
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Api-Key': apiKey
       }
     });
 

@@ -38,18 +38,22 @@ async function getDecisionMakers(domain) {
       }
     });
 
-    const results = response.data.response?.results || [];
+    // 1. Prospeo returns results directly under the root results property
+    const results = response.data.results || [];
     const decisionMakers = [];
 
     for (const lead of results) {
-      if (!lead.linkedin) continue; // LinkedIn URL is required for Stage 3
+      const person = lead.person;
+      const company = lead.company;
+
+      if (!person || !person.linkedin_url) continue; // LinkedIn URL is required for Stage 3
 
       // Normalize names and titles
-      const firstName = lead.first_name || '';
-      const lastName = lead.last_name || '';
-      const jobTitle = lead.job_title || lead.title || 'Executive';
-      const linkedinUrl = lead.linkedin;
-      const companyName = lead.company?.name || cleanDomain.split('.')[0];
+      const firstName = person.first_name || '';
+      const lastName = person.last_name || '';
+      const jobTitle = person.current_job_title || 'Executive';
+      const linkedinUrl = person.linkedin_url;
+      const companyName = company?.name || cleanDomain.split('.')[0];
 
       decisionMakers.push({
         firstName,
