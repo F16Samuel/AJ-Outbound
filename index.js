@@ -63,8 +63,8 @@ async function runPipeline(seedDomain, options) {
     for (const domain of lookalikeDomains) {
       const companyDMs = await getDecisionMakers(domain);
       rawDecisionMakers.push(...companyDMs);
-      // Subtle pause to respect API rate limits
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Subtle pause to respect API rate limits (Prospeo allows 1 request/sec)
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     if (rawDecisionMakers.length === 0) {
@@ -88,7 +88,7 @@ async function runPipeline(seedDomain, options) {
         });
       }
       // Pause to avoid hitting Prospeo rate limits
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     logger.divider();
@@ -153,8 +153,8 @@ async function runPipeline(seedDomain, options) {
           contact.jobTitle
         );
         if (success) successCount++;
-        // Small delay between sends
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Small delay between sends to prevent Brevo delivery spikes
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       logger.divider();
