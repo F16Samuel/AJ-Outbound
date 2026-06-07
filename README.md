@@ -6,7 +6,7 @@ A highly modular, resilient, 4-stage Command Line Interface (CLI) outreach tool 
 
 ## 🚀 Architecture & Pipeline Flow
 
-The tool operates in three distinct workflow scenarios based on the command-line flags you pass:
+The tool operates in four distinct workflow scenarios based on the command-line flags you pass:
 
 ### 1. Scenario A: Safety Mode (`--safety` flag only)
 Slices through Stages 1–3 on real prospects, renders the Safety Checkpoint table, and pauses for a **Y/N** input. Emails are sent only upon explicit user confirmation (`Y`).
@@ -24,8 +24,8 @@ graph LR
 
 ---
 
-### 2. Scenario B: Demo Mode (`--demo` flag, optional `--safety`)
-Runs Stages 1–3, but overrides the final target list with test emails `project.samarops@gmail.com` and `samar@casmed.in` to allow safe sandbox dry-runs. Prompts Y/N if `--safety` is passed, otherwise sends immediately.
+### 2. Scenario B: Demo Mode (`--demo` flag only)
+Runs Stages 1–3 on real prospects, but overrides the final target list with test emails `project.samarops@gmail.com` and `samar@casmed.in` to allow safe sandbox dry-runs. Bypasses the safety checkpoint prompts and sends immediately.
 
 ```mermaid
 graph LR
@@ -33,11 +33,9 @@ graph LR
     Stage1 --> Stage2[Stage 2: Prospeo Decision Makers]
     Stage2 --> Stage3[Stage 3: Email Resolution]
     Stage3 --> DemoOverride[Demo Override: Test Emails only]
-    DemoOverride --> SafetyCheck{--safety passed?}
-    SafetyCheck -->|Yes| Checkpoint[Y/N Checkpoint Prompt] -->|Y: Approve| Stage4[Stage 4: Brevo SMTP]
-    SafetyCheck -->|No| Stage4[Stage 4: Brevo SMTP]
+    DemoOverride --> Stage4[Stage 4: Brevo SMTP Outreach]
 ```
-* **Command:** `node index.js stripe.com --demo --safety`
+* **Command:** `node index.js stripe.com --demo`
 
 ---
 
@@ -52,6 +50,20 @@ graph LR
     Stage3 -->|Verified Emails| Stage4[Stage 4: Brevo SMTP Outreach]
 ```
 * **Command:** `node index.js stripe.com`
+
+---
+
+### 4. Scenario D: Mail-Only Mock Run (`--stage mail` and `--demo` flags)
+Skips Stages 1–3 entirely and jumps directly to Stage 4 (Outreach) with the mock test emails (`project.samarops@gmail.com` and `samar@casmed.in`). No seed domain argument is required. Supplying optional `--safety` prompts the user for Y/N confirmation before dispatching.
+
+```mermaid
+graph LR
+    Start[Start: Mail-Only Stage] --> DemoOverride[Demo Override: Test Emails only]
+    DemoOverride --> SafetyCheck{--safety passed?}
+    SafetyCheck -->|Yes| Checkpoint[Y/N Checkpoint Prompt] -->|Y: Approve| Stage4[Stage 4: Brevo SMTP Outreach]
+    SafetyCheck -->|No| Stage4[Stage 4: Brevo SMTP Outreach]
+```
+* **Command:** `node index.js --stage mail --demo --safety`
 
 ---
 
