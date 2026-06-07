@@ -30,11 +30,11 @@ async function sendOutreachEmail(toEmail, firstName, companyName, jobTitle) {
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333;">
         <p>Hi ${capitalizedFirstName},</p>
         <p>I noticed that <strong>${formattedCompany}</strong> is doing great work, and given your role as <strong>${jobTitle}</strong>, I wanted to reach out with a quick question.</p>
-        <p>Are you currently looking to automate your outbound lead sourcing and outreach pipeline? I have built an automated outbound outreach engine in Node.js that programmatically coordinates lookalike company sourcing (Apollo.io/Ocean.io), decision-maker discovery (Prospeo), email verification, and Brevo delivery.</p>
-        <p>I'd love to share the source code or show you a quick demo. Are you free for a brief chat this week?</p>
+        <p>Are you currently looking to automate your lead sourcing and outreach pipeline? I have built an automated outbound outreach engine in Node.js that coordinates lookalike company sourcing (Apollo.io), discovery (Prospeo), verification, and Brevo based email delivery.</p>
+        <p>I'd love to share the source code and show you a quick demo. Are you free for a brief chat this week?</p>
         <p>Best regards,</p>
         <p><strong>${senderName}</strong><br>
-        Software Engineering Candidate<br>
+        Software Development Engineering Intern Candidate<br>
         <a href="mailto:${senderEmail}">${senderEmail}</a></p>
       </body>
     </html>
