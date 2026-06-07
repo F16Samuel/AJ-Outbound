@@ -65,6 +65,11 @@ async function getDecisionMakers(domain) {
         companyName,
         domain: cleanDomain
       });
+
+      // Credit management safety limit: only process top 3 decision makers per company
+      if (decisionMakers.length >= 3) {
+        break;
+      }
     }
 
     logger.success(`Stage 2: Found ${decisionMakers.length} decision-makers for ${cleanDomain}`);
