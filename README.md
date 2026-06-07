@@ -113,13 +113,15 @@ SENDER_NAME="Anugya Jain"
 
 To run the pipeline against a seed domain, execute:
 ```bash
-node index.js <seed-domain> [options]
+node index.js [seed-domain] [options]
 ```
 
 ### CLI Options:
 * `-l, --limit <number>`: Number of lookalike companies to source (default: `3`).
 * `-s, --safety`: Enables the interactive Safety Checkpoint table and Y/N confirmation prompt. **If omitted, the pipeline sends emails immediately.**
 * `-d, --demo`: Demo Mode. Overrides the resolved email targets from Stages 1–3 and targets **`project.samarops@gmail.com`** and **`samar@casmed.in`** only, allowing safe, end-to-end sandbox testing.
+* `-t, --stage <type>`: Execution stage: `exec` (performs stages 1 to 4; default) or `mail` (only initiates the mail section; when combined with `--demo`, it skips stages 1-3 entirely and runs only the mock mail).
+
 
 ### Examples:
 * **Demo Sandbox (targets test inboxes with safety checkpoint):**
@@ -133,6 +135,10 @@ node index.js <seed-domain> [options]
 * **Interactive Sourcing Run (source 5 lookalikes with Y/N safeguard):**
   ```bash
   node index.js stripe.com -l 5 --safety
+  ```
+* **Mail-Only Mock Run (skips stages 1-3, sends test emails directly):**
+  ```bash
+  node index.js --stage mail --demo --safety
   ```
 
 ---
