@@ -1,0 +1,173 @@
+#!/usr/bin/env node
+
+require('dotenv').config();
+const { Command } = require('commander');
+const inquirer = require('inquirer');
+const pc = require('picocolors');
+const logger = require('./src/utils/logger');
+const { getLookalikes } = require('./src/api/lookalikes');
+const { getDecisionMakers } = require('./src/api/prospeo');
+const { resolveEmail } = require('./src/api/eazyreach');
+const { sendOutreachEmail } = require('./src/api/brevo');
+
+// Initialize Commander
+const program = new Command();
+
+program
+  .name('outreach-pipeline')
+  .description('Automated 4-stage outbound sales outreach pipeline CLI.')
+  .argument('<seed-domain>', 'Seed company domain to find lookalikes for (e.g. stripe.com)')
+  .option('-l, --limit <number>', 'Number of lookalike companies to source', '3')
+  .action(runPipeline);
+
+async function runPipeline(seedDomain, options) {
+  logger.header('AUTOMATED OUTREACH PIPELINE');
+  
+  const limit = parseInt(options.limit, 10);
+  if (isNaN(limit) || limit <= 0) {
+    logger.error('Invalid limit. Please specify a positive number.');
+    process.exit(1);
+  }
+
+  // Validate environment variables
+  const requiredKeys = ['APOLLO_API_KEY', 'PROSPEO_API_KEY', 'EAZYREACH_API_KEY', 'BREVO_API_KEY', 'SENDER_EMAIL'];
+  const missingKeys = requiredKeys.filter(key => !process.env[key]);
+  if (missingKeys.length > 0) {
+    logger.error(`Missing required environment variables: ${missingKeys.join(', ')}`);
+    logger.info('Please check your .env file against .env.example.');
+    process.exit(1);
+  }
+
+  logger.info(`Starting pipeline with seed domain: ${pc.bold(seedDomain)} (limit: ${limit} companies)`);
+  logger.divider();
+
+  try {
+    // ==========================================
+    // STAGE 1: Lookalike Sourcing
+    // ==========================================
+    logger.step('1', `Sourcing lookalike companies similar to ${seedDomain}...`);
+    const lookalikeDomains = await getLookalikes(seedDomain, limit);
+    
+    if (!lookalikeDomains || lookalikeDomains.length === 0) {
+      logger.warn('No lookalike companies found. Halted pipeline.');
+      process.exit(0);
+    }
+    logger.divider();
+
+    // ==========================================
+    // STAGE 2: Decision Maker Identification
+    // ==========================================
+    logger.step('2', `Searching for C-level/VP decision makers in lookalike domains...`);
+    const rawDecisionMakers = [];
+    
+    for (const domain of lookalikeDomains) {
+      const companyDMs = await getDecisionMakers(domain);
+      rawDecisionMakers.push(...companyDMs);
+      // Subtle pause to respect API rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    if (rawDecisionMakers.length === 0) {
+      logger.warn('No decision makers found with LinkedIn profiles. Halted pipeline.');
+      process.exit(0);
+    }
+    logger.divider();
+
+    // ==========================================
+    // STAGE 3: Email Resolution
+    // ==========================================
+    logger.step('3', `Resolving verified business email addresses from LinkedIn profiles...`);
+    const verifiedContacts = [];
+
+    for (const dm of rawDecisionMakers) {
+      const email = await resolveEmail(dm.linkedinUrl);
+      if (email) {
+        verifiedContacts.push({
+          ...dm,
+          email
+        });
+      }
+      // Pause to avoid hitting Prospeo rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    logger.divider();
+
+    if (verifiedContacts.length === 0) {
+      logger.warn('No verified emails could be resolved for any decision-makers. Halted pipeline.');
+      process.exit(0);
+    }
+
+    // ==========================================
+    // SAFETY CHECKPOINT
+    // ==========================================
+    logger.header('SAFETY CHECKPOINT');
+    console.log(pc.yellow(pc.bold('Ready to launch campaign. Summary of target list:')));
+    
+    // Draw a premium ASCII summary table
+    const colWidths = { name: 22, title: 25, company: 18, email: 28 };
+    const tableHeader = 
+      `| ${'Name'.padEnd(colWidths.name)} | ${'Job Title'.padEnd(colWidths.title)} | ${'Company'.padEnd(colWidths.company)} | ${'Email'.padEnd(colWidths.email)} |`;
+    const tableDivider = `+${'-'.repeat(colWidths.name + 2)}+${'-'.repeat(colWidths.title + 2)}+${'-'.repeat(colWidths.company + 2)}+${'-'.repeat(colWidths.email + 2)}+`;
+    
+    console.log(pc.cyan(tableDivider));
+    console.log(pc.cyan(tableHeader));
+    console.log(pc.cyan(tableDivider));
+    
+    verifiedContacts.forEach(c => {
+      const fullName = `${c.firstName} ${c.lastName}`.substring(0, colWidths.name);
+      const title = c.jobTitle.substring(0, colWidths.title);
+      const company = c.companyName.substring(0, colWidths.company);
+      const email = c.email.substring(0, colWidths.email);
+      
+      console.log(pc.white(
+        `| ${fullName.padEnd(colWidths.name)} | ${title.padEnd(colWidths.title)} | ${company.padEnd(colWidths.company)} | ${email.padEnd(colWidths.email)} |`
+      ));
+    });
+    console.log(pc.cyan(tableDivider));
+    console.log(`\nFound ${pc.green(pc.bold(verifiedContacts.length))} verified email(s) across target lookalike companies.`);
+    console.log(pc.dim(`Sender configuration: ${process.env.SENDER_NAME} <${process.env.SENDER_EMAIL}>\n`));
+
+    // Ask user for permission to send
+    const answers = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'confirmSend',
+        message: 'Do you want to send the personalized outreach campaign to these contacts?',
+        default: false
+      }
+    ]);
+
+    // ==========================================
+    // STAGE 4: Email Outreach
+    // ==========================================
+    if (answers.confirmSend) {
+      logger.step('4', `Initiating personalized email outreach campaign via Brevo SMTP...`);
+      let successCount = 0;
+
+      for (const contact of verifiedContacts) {
+        const success = await sendOutreachEmail(
+          contact.email, 
+          contact.firstName, 
+          contact.companyName, 
+          contact.jobTitle
+        );
+        if (success) successCount++;
+        // Small delay between sends
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      logger.divider();
+      logger.success(`Pipeline Execution Completed successfully!`);
+      console.log(pc.green(`   Campaign Sent: ${successCount} / ${verifiedContacts.length} emails delivered successfully.`));
+    } else {
+      logger.warn('Pipeline execution halted by user. No outreach emails were sent.');
+    }
+
+  } catch (error) {
+    logger.error('Pipeline execution failed due to an unexpected error:', error.stack);
+    process.exit(1);
+  }
+}
+
+program.parse(process.argv);
