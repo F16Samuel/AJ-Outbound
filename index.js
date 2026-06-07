@@ -18,6 +18,8 @@ program
   .description('Automated 4-stage outbound sales outreach pipeline CLI.')
   .argument('<seed-domain>', 'Seed company domain to find lookalikes for (e.g. stripe.com)')
   .option('-l, --limit <number>', 'Number of lookalike companies to source', '3')
+  .option('-s, --safety', 'Enable safety checkpoint interactive Y/N prompt before sending')
+  .option('-d, --demo', 'Demo mode: targets project.samarops@gmail.com and samar@casmed.in only')
   .action(runPipeline);
 
 async function runPipeline(seedDomain, options) {
@@ -46,9 +48,15 @@ async function runPipeline(seedDomain, options) {
     // STAGE 1: Lookalike Sourcing
     // ==========================================
     logger.step('1', `Sourcing lookalike companies similar to ${seedDomain}...`);
-    const lookalikeDomains = await getLookalikes(seedDomain, limit);
+    let lookalikeDomains = [];
+    try {
+      lookalikeDomains = await getLookalikes(seedDomain, limit);
+    } catch (err) {
+      if (!options.demo) throw err;
+      logger.warn(`Stage 1 Sourcing failed: ${err.message}. Continuing due to Demo Mode.`);
+    }
     
-    if (!lookalikeDomains || lookalikeDomains.length === 0) {
+    if ((!lookalikeDomains || lookalikeDomains.length === 0) && !options.demo) {
       logger.warn('No lookalike companies found. Halted pipeline.');
       process.exit(0);
     }
@@ -61,13 +69,17 @@ async function runPipeline(seedDomain, options) {
     const rawDecisionMakers = [];
     
     for (const domain of lookalikeDomains) {
-      const companyDMs = await getDecisionMakers(domain);
-      rawDecisionMakers.push(...companyDMs);
+      try {
+        const companyDMs = await getDecisionMakers(domain);
+        rawDecisionMakers.push(...companyDMs);
+      } catch (err) {
+        logger.warn(`Stage 2 Search failed for domain ${domain}: ${err.message}.`);
+      }
       // Subtle pause to respect API rate limits (Prospeo allows 1 request/sec)
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    if (rawDecisionMakers.length === 0) {
+    if (rawDecisionMakers.length === 0 && !options.demo) {
       logger.warn('No decision makers found with LinkedIn profiles. Halted pipeline.');
       process.exit(0);
     }
@@ -80,20 +92,48 @@ async function runPipeline(seedDomain, options) {
     const verifiedContacts = [];
 
     for (const dm of rawDecisionMakers) {
-      const email = await resolveEmail(dm.linkedinUrl);
-      if (email) {
-        verifiedContacts.push({
-          ...dm,
-          email
-        });
+      try {
+        const email = await resolveEmail(dm.linkedinUrl);
+        if (email) {
+          verifiedContacts.push({
+            ...dm,
+            email
+          });
+        }
+      } catch (err) {
+        logger.warn(`Stage 3 Resolution failed for ${dm.firstName}: ${err.message}.`);
       }
-      // Pause to avoid hitting Prospeo rate limits
+      // Pause to avoid hitting Prospeo rate limits (Prospeo allows 1 request/sec)
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     logger.divider();
 
-    if (verifiedContacts.length === 0) {
+    // Override targets if demo mode is enabled
+    let targetContacts = verifiedContacts;
+    if (options.demo) {
+      logger.info(pc.yellow('Demo Mode active: Overriding target list with test emails.'));
+      targetContacts = [
+        {
+          firstName: 'Samar',
+          lastName: 'Ops',
+          jobTitle: 'Head of Operations',
+          companyName: 'SamarOps',
+          domain: 'samarops.com',
+          email: 'project.samarops@gmail.com'
+        },
+        {
+          firstName: 'Samar',
+          lastName: 'Casmed',
+          jobTitle: 'Founder',
+          companyName: 'Casmed',
+          domain: 'casmed.in',
+          email: 'samar@casmed.in'
+        }
+      ];
+    }
+
+    if (targetContacts.length === 0) {
       logger.warn('No verified emails could be resolved for any decision-makers. Halted pipeline.');
       process.exit(0);
     }
@@ -114,7 +154,7 @@ async function runPipeline(seedDomain, options) {
     console.log(pc.cyan(tableHeader));
     console.log(pc.cyan(tableDivider));
     
-    verifiedContacts.forEach(c => {
+    targetContacts.forEach(c => {
       const fullName = `${c.firstName} ${c.lastName}`.substring(0, colWidths.name);
       const title = c.jobTitle.substring(0, colWidths.title);
       const company = c.companyName.substring(0, colWidths.company);
@@ -125,27 +165,33 @@ async function runPipeline(seedDomain, options) {
       ));
     });
     console.log(pc.cyan(tableDivider));
-    console.log(`\nFound ${pc.green(pc.bold(verifiedContacts.length))} verified email(s) across target lookalike companies.`);
+    console.log(`\nFound ${pc.green(pc.bold(targetContacts.length))} verified email(s) across target lookalike companies.`);
     console.log(pc.dim(`Sender configuration: ${process.env.SENDER_NAME} <${process.env.SENDER_EMAIL}>\n`));
 
-    // Ask user for permission to send
-    const answers = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'confirmSend',
-        message: 'Do you want to send the personalized outreach campaign to these contacts?',
-        default: false
-      }
-    ]);
+    let confirmSend = true;
+    if (options.safety) {
+      // Ask user for permission to send
+      const answers = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'confirmSend',
+          message: 'Do you want to send the personalized outreach campaign to these contacts?',
+          default: false
+        }
+      ]);
+      confirmSend = answers.confirmSend;
+    } else {
+      logger.info(pc.yellow('Safety Checkpoint bypassed (--safety flag not passed). Proceeding immediately.'));
+    }
 
     // ==========================================
     // STAGE 4: Email Outreach
     // ==========================================
-    if (answers.confirmSend) {
+    if (confirmSend) {
       logger.step('4', `Initiating personalized email outreach campaign via Brevo SMTP...`);
       let successCount = 0;
 
-      for (const contact of verifiedContacts) {
+      for (const contact of targetContacts) {
         const success = await sendOutreachEmail(
           contact.email, 
           contact.firstName, 
@@ -159,7 +205,7 @@ async function runPipeline(seedDomain, options) {
 
       logger.divider();
       logger.success(`Pipeline Execution Completed successfully!`);
-      console.log(pc.green(`   Campaign Sent: ${successCount} / ${verifiedContacts.length} emails delivered successfully.`));
+      console.log(pc.green(`   Campaign Sent: ${successCount} / ${targetContacts.length} emails delivered successfully.`));
     } else {
       logger.warn('Pipeline execution halted by user. No outreach emails were sent.');
     }
