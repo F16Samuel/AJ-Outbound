@@ -103,8 +103,8 @@ PROSPEO_API_KEY=your_prospeo_api_key_here
 
 # Outreach (Brevo API)
 BREVO_API_KEY=your_brevo_api_key_here
-SENDER_EMAIL=contact@anugyajain.info
-SENDER_NAME="Anugya Jain"
+SENDER_EMAIL=your_verified_sender_email_here
+SENDER_NAME="Your Sender Name"
 ```
 
 ---
