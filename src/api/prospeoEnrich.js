@@ -3,19 +3,19 @@ const logger = require('../utils/logger');
 
 /**
  * Stage 3: Resolving LinkedIn Profile to Verified Email
- * Uses Prospeo Enrich Person API (via EAZYREACH_API_KEY) to retrieve a verified work email from a LinkedIn URL.
+ * Uses Prospeo Enrich Person API (via PROSPEO_API_KEY) to retrieve a verified work email from a LinkedIn URL.
  * 
  * @param {string} linkedinUrl - The LinkedIn profile URL of the contact.
  * @returns {Promise<string|null>} The verified email address, or null if not found.
  */
 async function resolveEmail(linkedinUrl) {
-  const apiKey = process.env.EAZYREACH_API_KEY;
+  const apiKey = process.env.PROSPEO_API_KEY;
 
   if (!apiKey) {
-    throw new Error('EAZYREACH_API_KEY is not defined in the environment variables.');
+    throw new Error('PROSPEO_API_KEY is not defined in the environment variables.');
   }
 
-  logger.info(`Eazyreach Fallback: Resolving email for LinkedIn profile: ${linkedinUrl}`);
+  logger.info(`Prospeo Enrich: Resolving email for LinkedIn profile: ${linkedinUrl}`);
 
   try {
     const response = await axios.post('https://api.prospeo.io/enrich-person', {
