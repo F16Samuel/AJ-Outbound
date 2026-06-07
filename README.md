@@ -163,19 +163,3 @@ To ensure the CLI is robust enough to run in a production setting:
 3. **Resilient Fallbacks:** If Apollo lookalike company search returns 0 results (due to narrow keywords), the lookalike client falls back to an industry-representative seed list to ensure the downstream pipeline can still execute.
 4. **Data Sanitization:** Trims and sanitizes domain inputs (removes `https://`, `www.`, etc.) to prevent API matching failures.
 
----
-
-## 📂 Git Branching & History
-
-This repository reflects professional software engineering practices, utilizing specific feature branching and merges:
-* `setup/init` - Base dependencies and logging setup.
-* `feature/stage1-lookalikes` - Apollo client integration.
-* `feature/stage2-prospeo` - Prospeo decision-maker search.
-* `feature/stage3-eazyreach` - Email resolver fallback (re-routed to Prospeo's Enrich Person API due to lack of Eazyreach API keys).
-* `feature/stage4-brevo` - Brevo outbound SMTP setup.
-* `feature/cli-orchestrator` - Index script wiring and checkpoint.
-* `hotfix/api-corrections` - Corrected Apollo query headers and Prospeo results mapping.
-* `optimize/credit-management` - Implemented the credit-preservation safety filter.
-* `hotfix/enrich-parsing` - Fixed email resolution key path mapping and status checks.
-* `optimize/rate-limiting-delays` - Switched to 2-second loops to avoid Prospeo 429 limits.
-* `feature/cli-flags` - Added `--safety` and `--demo` CLI arguments.
