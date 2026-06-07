@@ -31,16 +31,18 @@ async function resolveEmail(linkedinUrl) {
       }
     });
 
-    const emailInfo = response.data.response?.email;
+    const person = response.data.person;
+    const emailInfo = person?.email;
     if (emailInfo && emailInfo.email) {
       const email = emailInfo.email;
-      const verdict = emailInfo.verdict || 'unknown';
+      const status = emailInfo.status ? emailInfo.status.toLowerCase() : 'unknown';
+      logger.info(`Status returned: ${status}`);
       
-      if (verdict === 'verified' || verdict === 'catch-all' || verdict === 'safe') {
-        logger.success(`Successfully resolved email: ${email} (Verdict: ${verdict})`);
+      if (status === 'verified' || status === 'catch-all' || status === 'safe') {
+        logger.success(`Successfully resolved email: ${email} (Status: ${status})`);
         return email;
       } else {
-        logger.warn(`Resolved email ${email} but verdict was: ${verdict}. Skipping to maintain high deliverability.`);
+        logger.warn(`Resolved email ${email} but status was: ${status}. Skipping to maintain high deliverability.`);
         return null;
       }
     } else {
@@ -51,6 +53,9 @@ async function resolveEmail(linkedinUrl) {
   } catch (error) {
     const errorMsg = error.response?.data?.message || error.message;
     logger.error(`Error resolving email for ${linkedinUrl}: ${errorMsg}`);
+    if (error.response?.data) {
+      logger.error(`Full response: ${JSON.stringify(error.response.data, null, 2)}`);
+    }
     // Return null to keep orchestrator running rather than crashing
     return null;
   }
