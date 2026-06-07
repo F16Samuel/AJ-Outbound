@@ -7,7 +7,7 @@ const pc = require('picocolors');
 const logger = require('./src/utils/logger');
 const { getLookalikes } = require('./src/api/lookalikes');
 const { getDecisionMakers } = require('./src/api/prospeo');
-const { resolveEmail } = require('./src/api/eazyreach');
+const { resolveEmail } = require('./src/api/prospeoEnrich');
 const { sendOutreachEmail } = require('./src/api/brevo');
 
 // Initialize Commander
@@ -32,7 +32,7 @@ async function runPipeline(seedDomain, options) {
   }
 
   // Validate environment variables
-  const requiredKeys = ['APOLLO_API_KEY', 'PROSPEO_API_KEY', 'EAZYREACH_API_KEY', 'BREVO_API_KEY', 'SENDER_EMAIL'];
+  const requiredKeys = ['APOLLO_API_KEY', 'PROSPEO_API_KEY', 'BREVO_API_KEY', 'SENDER_EMAIL'];
   const missingKeys = requiredKeys.filter(key => !process.env[key]);
   if (missingKeys.length > 0) {
     logger.error(`Missing required environment variables: ${missingKeys.join(', ')}`);

@@ -59,7 +59,9 @@ graph LR
 
 1. **Stage 1: Lookalike Sourcing (`src/api/lookalikes.js`):** Enriches the seed domain using Apollo's `GET /api/v1/organizations/enrich` to find firmographics, then searches similar companies via `POST /api/v1/organizations/search`.
 2. **Stage 2: Finding Decision Makers (`src/api/prospeo.js`):** Queries Prospeo `POST /search-person` for contacts at lookalike domains with seniorities of C-Suite, VP, and Director. Limits results to 3 per company for credit safety.
-3. **Stage 3: Email Resolution (`src/api/eazyreach.js`):** Sends target LinkedIn URLs to Prospeo `POST /enrich-person` to retrieve and verify emails.
+3. **Stage 3: Email Resolution (`src/api/prospeoEnrich.js`):** Sends target LinkedIn URLs to Prospeo `POST /enrich-person` to retrieve and verify emails.
+   > [!NOTE]
+   > Stage 3 is routed directly through Prospeo's Enrich Person API using your `PROSPEO_API_KEY` because Eazyreach's dashboard did not offer any way to obtain an API key (or we were unable to find it whatsoever).
 4. **Stage 4: Personalized Outreach (`src/api/brevo.js`):** Personalizes HTML templates using contact data and delivers them via Brevo SMTP from your custom sender `contact@anugyajain.info`.
 
 ---
@@ -95,8 +97,9 @@ APOLLO_API_KEY=your_apollo_api_key_here
 # Decision Makers (Prospeo API)
 PROSPEO_API_KEY=your_prospeo_api_key_here
 
-# Email Resolution (Eazyreach Fallback using Prospeo API)
-EAZYREACH_API_KEY=your_prospeo_api_key_here
+# Email Resolution (Stage 3 uses Prospeo Enrich Person API)
+# We are using Prospeo API key only because there was no option to get an Eazyreach API key from the dashboard or if there was we were unable to find it whatsoever.
+# Stage 3 is fully integrated with Prospeo's /enrich-person API using PROSPEO_API_KEY.
 
 # Outreach (Brevo API)
 BREVO_API_KEY=your_brevo_api_key_here
@@ -138,7 +141,7 @@ node index.js <seed-domain> [options]
 
 To ensure the CLI is robust enough to run in a production setting:
 1. **Loop Rate-Limiting:** Incorporates strict delays of **`2000ms` (2 seconds)** inside processing loops to respect third-party API rate limits and avoid `429 Too Many Requests` responses.
-2. **Graceful Failures:** Each API call is wrapped in a `try/catch` block. If Prospeo or Eazyreach fails to resolve a contact for *one* lookalike company, the script logs a warning, skips that company, and moves to the next without crashing.
+2. **Graceful Failures:** Each API call is wrapped in a `try/catch` block. If Prospeo fails to resolve a contact for *one* company or decision maker, the script logs a warning, skips that company/person, and moves to the next without crashing.
 3. **Resilient Fallbacks:** If Apollo lookalike company search returns 0 results (due to narrow keywords), the lookalike client falls back to an industry-representative seed list to ensure the downstream pipeline can still execute.
 4. **Data Sanitization:** Trims and sanitizes domain inputs (removes `https://`, `www.`, etc.) to prevent API matching failures.
 
@@ -150,7 +153,7 @@ This repository reflects professional software engineering practices, utilizing 
 * `setup/init` - Base dependencies and logging setup.
 * `feature/stage1-lookalikes` - Apollo client integration.
 * `feature/stage2-prospeo` - Prospeo decision-maker search.
-* `feature/stage3-eazyreach` - Email resolver fallback.
+* `feature/stage3-eazyreach` - Email resolver fallback (re-routed to Prospeo's Enrich Person API due to lack of Eazyreach API keys).
 * `feature/stage4-brevo` - Brevo outbound SMTP setup.
 * `feature/cli-orchestrator` - Index script wiring and checkpoint.
 * `hotfix/api-corrections` - Corrected Apollo query headers and Prospeo results mapping.
