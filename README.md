@@ -6,48 +6,61 @@ A highly modular, resilient, 4-stage Command Line Interface (CLI) outreach tool 
 
 ## 🚀 Architecture & Pipeline Flow
 
-The tool operates in four distinct stages, feeding the output of each stage directly into the next:
+The tool operates in three distinct workflow scenarios based on the command-line flags you pass:
+
+### 1. Scenario A: Safety Mode (`--safety` flag only)
+Slices through Stages 1–3 on real prospects, renders the Safety Checkpoint table, and pauses for a **Y/N** input. Emails are sent only upon explicit user confirmation (`Y`).
 
 ```mermaid
-graph TD
-    Input[Seed Domain: e.g. stripe.com] --> Stage1[Stage 1: Apollo.io lookalikes]
+graph LR
+    Input[Seed Domain] --> Stage1[Stage 1: Apollo Lookalikes]
     Stage1 -->|Similar Domains| Stage2[Stage 2: Prospeo Decision Makers]
-    Stage2 -->|LinkedIn URLs & Info| Stage3[Stage 3: Eazyreach Email Resolver]
-    Stage3 -->|Verified Emails| Checkpoint{Safety Checkpoint: interactive table}
-    Checkpoint -->|User approves Y| Stage4[Stage 4: Brevo SMTP Outreach]
-    Checkpoint -->|User rejects N| End[Halted safely]
+    Stage2 -->|LinkedIn URLs| Stage3[Stage 3: Email Resolution]
+    Stage3 -->|Verified Emails| Checkpoint{Y/N Checkpoint Prompt}
+    Checkpoint -->|Y: Approve| Stage4[Stage 4: Brevo SMTP Outreach]
+    Checkpoint -->|N: Reject| End[Halted safely]
 ```
+* **Command:** `node index.js stripe.com --safety`
 
-### 1. Stage 1: Lookalike Sourcing (`src/api/lookalikes.js`)
-* **Service:** Apollo.io API (used as a highly accurate lookalike alternative).
-* **Process:** 
-  1. Enriches the seed domain using `POST /v1/organizations/enrich` to find its keyword tags and industries.
-  2. Queries `POST /v1/organizations/search` with the extracted keywords to locate similar tech or firmographic organizations.
-  3. Filters out the seed domain and duplicates, returning a clean array of company domains.
+---
 
-### 2. Stage 2: Finding Decision Makers (`src/api/prospeo.js`)
-* **Service:** Prospeo Search API.
-* **Process:** 
-  * Loops through the derived domains and queries the `POST /search-person` endpoint.
-  * Filters for contacts at each specific domain with seniorities of **"C-Suite"**, **"Vice President"**, or **"Director"**.
-  * Outputs candidate names, job titles, and LinkedIn profile URLs.
+### 2. Scenario B: Demo Mode (`--demo` flag, optional `--safety`)
+Runs Stages 1–3, but overrides the final target list with test emails `project.samarops@gmail.com` and `samar@casmed.in` to allow safe sandbox dry-runs. Prompts Y/N if `--safety` is passed, otherwise sends immediately.
 
-### 3. Stage 3: Email Resolution (`src/api/eazyreach.js`)
-* **Service:** Prospeo Enrich Person API (acting as a 100% functional Eazyreach backend resolver).
-* **Process:** 
-  * Sends target LinkedIn URLs to `POST /enrich-person`.
-  * Extracts verified business email addresses, filtering out unverified or high-risk (deliverability) targets.
+```mermaid
+graph LR
+    Input[Seed Domain] --> Stage1[Stage 1: Apollo Lookalikes]
+    Stage1 --> Stage2[Stage 2: Prospeo Decision Makers]
+    Stage2 --> Stage3[Stage 3: Email Resolution]
+    Stage3 --> DemoOverride[Demo Override: Test Emails only]
+    DemoOverride --> SafetyCheck{--safety passed?}
+    SafetyCheck -->|Yes| Checkpoint[Y/N Checkpoint Prompt] -->|Y: Approve| Stage4[Stage 4: Brevo SMTP]
+    SafetyCheck -->|No| Stage4[Stage 4: Brevo SMTP]
+```
+* **Command:** `node index.js stripe.com --demo --safety`
 
-### 4. Safety Checkpoint (`index.js`)
-* **Process:** 
-  * Displays a formatted summary table of target contacts (Name, Job Title, Company, Email) in the terminal.
-  * Pauses execution and prompts the user using `inquirer`: *"Do you want to send the personalized outreach campaign? (Y/N)"*.
+---
 
-### 5. Stage 4: Personalized Outreach (`src/api/brevo.js`)
-* **Service:** Brevo SMTP API (Transactional Emails).
-* **Process:** 
-  * Fires a highly personalized HTML cold-outreach template targeting each verified contact.
-  * Utilizes custom sender addresses verified under your Hostinger custom domain (`anugyajain.info`).
+### 3. Scenario C: Full Execution / Default (No flags)
+Designed for fully automated, headless growth loops. Runs Stages 1–3 on real contacts and immediately fires outreach emails to them without pause or checkpoint confirmation.
+
+```mermaid
+graph LR
+    Input[Seed Domain] --> Stage1[Stage 1: Apollo Lookalikes]
+    Stage1 -->|Similar Domains| Stage2[Stage 2: Prospeo Decision Makers]
+    Stage2 -->|LinkedIn URLs| Stage3[Stage 3: Email Resolution]
+    Stage3 -->|Verified Emails| Stage4[Stage 4: Brevo SMTP Outreach]
+```
+* **Command:** `node index.js stripe.com`
+
+---
+
+### 🔍 Stage-by-Stage Details
+
+1. **Stage 1: Lookalike Sourcing (`src/api/lookalikes.js`):** Enriches the seed domain using Apollo's `GET /api/v1/organizations/enrich` to find firmographics, then searches similar companies via `POST /api/v1/organizations/search`.
+2. **Stage 2: Finding Decision Makers (`src/api/prospeo.js`):** Queries Prospeo `POST /search-person` for contacts at lookalike domains with seniorities of C-Suite, VP, and Director. Limits results to 3 per company for credit safety.
+3. **Stage 3: Email Resolution (`src/api/eazyreach.js`):** Sends target LinkedIn URLs to Prospeo `POST /enrich-person` to retrieve and verify emails.
+4. **Stage 4: Personalized Outreach (`src/api/brevo.js`):** Personalizes HTML templates using contact data and delivers them via Brevo SMTP from your custom sender `contact@anugyajain.info`.
 
 ---
 
